@@ -1,11 +1,14 @@
 {
-	"folders": [
-		{
-			"path": "."
-		},
-		{
-			"path": "bluetooth-receiver"
-		}
-	],
-	"settings": {}
+  "folders": [
+    {
+      "path": ".",
+    },
+    {
+      "path": "bluetooth-receiver",
+    },
+    {
+      "path": "temperature-monitor",
+    },
+  ],
+  "settings": {},
 }

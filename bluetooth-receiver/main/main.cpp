@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include "AudioTools.h"
 #include "BluetoothA2DPSink.h"
 
@@ -11,19 +12,10 @@ void setup()
   cfg.pin_ws = 26;
   cfg.pin_data = 27;
   i2s.begin(cfg);
-  a2dp_sink.start("MyMusic");
+  a2dp_sink.start("esp-car-util");
 }
 
 void loop()
 {
   a2dp_sink.delay_ms(500); // or use vTaskDelay()
-}
-
-extern "C" void app_main(void)
-{
-  setup();
-  while (true)
-  {
-    loop();
-  }
 }

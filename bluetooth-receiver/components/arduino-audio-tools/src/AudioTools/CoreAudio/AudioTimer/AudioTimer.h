@@ -1,0 +1,92 @@
+#pragma once
+/**
+ * @defgroup timer Timers
+ * @ingroup tools
+ * @brief Platform independent timer API
+ */
+#include "AudioToolsConfig.h"
+#if defined(USE_TIMER)
+#include "AudioTools/CoreAudio/AudioTimer/AudioTimerAVR.h"
+#include "AudioTools/CoreAudio/AudioTimer/AudioTimerBase.h"
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+#include "AudioTools/CoreAudio/AudioTimer/AudioTimerESP32.h"
+#endif
+#include "AudioTools/CoreAudio/AudioTimer/AudioTimerESP32Legacy.h"
+#include "AudioTools/CoreAudio/AudioTimer/AudioTimerESP8266.h"
+#include "AudioTools/CoreAudio/AudioTimer/AudioTimerMBED.h"
+#include "AudioTools/CoreAudio/AudioTimer/AudioTimerRP2040.h"
+#include "AudioTools/CoreAudio/AudioTimer/AudioTimerRenesas.h"
+#include "AudioTools/CoreAudio/AudioTimer/AudioTimerSTM32.h"
+#include "AudioTools/CoreAudio/AudioTimer/AudioTimerDesktop.h"
+#include "AudioTools/CoreAudio/AudioTimer/AudioTimerZephyr.h"
+#include "AudioTools/CoreAudio/AudioLogger.h"
+
+namespace audio_tools {
+
+/**
+ * @brief Common Interface definition for AudioTimer
+ * @ingroup timer
+ */
+class AudioTimer {
+ public:
+  /// @brief Default constructor
+  AudioTimer() = default;
+  /**
+   * @brief Construct a new Timer Alarm Repeating object by passing your object
+   * which has been customized with some special platform specific parameters
+   * @param timer
+   */
+  AudioTimer(AudioTimerDriverBase& timer) {
+    setDriver(timer);
+  };
+  virtual ~AudioTimer() = default;
+
+  bool begin(repeating_timer_callback_t callback_f, uint32_t time,
+             TimeUnit unit = MS) {
+    // stop timer if it is already active          
+    if (is_active) end();
+    // start timer
+    is_active = p_timer->begin(callback_f, time, unit);
+    return is_active;
+  }
+  bool end() {
+    is_active = false;
+    return p_timer->end();
+  };
+
+  void setCallbackParameter(void* obj) { p_timer->setCallbackParameter(obj); }
+
+  void* callbackParameter() { return p_timer->callbackParameter(); }
+
+  virtual void setTimer(int timer) { p_timer->setTimer(timer); }
+
+  virtual void setTimerFunction(TimerFunction function = DirectTimerCallback) {
+    p_timer->setTimerFunction(function);
+  }
+
+  void setIsSave(bool is_save) { p_timer->setIsSave(is_save); }
+
+  /// @brief Returns true if the timer is active
+  operator bool() { return is_active; }
+
+  /// Provides access to the driver
+  AudioTimerDriverBase* driver() { return p_timer; }
+  
+  /// Allows to set a different driver
+  void setDriver(AudioTimerDriverBase& timer) {
+    p_timer = &timer;
+  }
+
+ protected:
+  void* object = nullptr;
+  bool is_active = false;
+  AudioTimerDriver timer;  // platform specific timer
+  AudioTimerDriverBase* p_timer = &timer;
+};
+
+// Support for legacy name
+using TimerAlarmRepeating = AudioTimer;
+
+}  // namespace audio_tools
+
+#endif

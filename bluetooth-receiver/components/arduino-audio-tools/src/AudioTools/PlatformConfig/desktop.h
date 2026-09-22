@@ -1,0 +1,65 @@
+#pragma once
+// cmake builds for desktop, zephyr and esp32 without arduino support
+#if defined(IS_MIN_DESKTOP) 
+#  include "AudioTools/AudioLibs/Emulation/Arduino.h"
+#  include "AudioTools/AudioLibs/Emulation/Time.h"
+#  include "AudioTools/AudioLibs/Emulation/Main.h"
+#  define USE_SD_NO_NS
+#  define USE_TIMER
+#  define USE_CPP_TASK
+#  define USE_STD_CONCURRENCY
+#  define USE_OPENCV
+#  ifndef EXIT_ON_STOP
+#    define EXIT_ON_STOP
+#  endif
+#elif defined(IS_DESKTOP_WITH_TIME_ONLY)
+#  include "AudioTools/AudioLibs/Emulation/Time.h"
+#  include "AudioTools/AudioLibs/Emulation/Arduino.h"
+#  define USE_SD_NO_NS
+#  define USE_TIMER
+#  define USE_CPP_TASK
+#  define USE_STD_CONCURRENCY
+#  define USE_OPENCV
+#  ifndef EXIT_ON_STOP
+#    define EXIT_ON_STOP
+#  endif
+#elif defined(IS_DESKTOP)
+#  include "Arduino.h"
+#  include <Client.h>
+#  include <WiFi.h>
+#  ifndef ARDUINO
+#    define ARDUINO
+#  endif
+#  define USE_SD_NO_NS
+#  define USE_WIFI
+#  define USE_URL_ARDUINO
+#  ifndef EXIT_ON_STOP
+#    define EXIT_ON_STOP
+#  endif
+#  define USE_TIMER
+#  define USE_CPP_TASK
+#  define USE_STD_CONCURRENCY
+#  define USE_OPENCV
+//#  define USE_3BYTE_INT24
+// Skip this alias if the build already has a real, TLS-capable
+// WiFiClientSecure (e.g. the Arduino-Emulator's own, built with its
+// USE_HTTPS option) - without the guard this silently shadows it, so
+// URLStream's own client_secure allocation (see
+// AudioTools/Communication/HTTP/URLStream.h) ends up using plain,
+// unencrypted WiFiClient for https:// streams instead.
+#ifndef TMD_REAL_WIFICLIENTSECURE
+typedef WiFiClient WiFiClientSecure;
+#endif
+#elif defined(ESP32_CMAKE)
+#  ifndef ESP32
+#    define ESP32
+#  endif
+#  include "esp_idf_version.h"
+#  include "AudioTools/AudioLibs/Emulation/Arduino.h"
+#else 
+//#  include "AudioTools/AudioLibs/Emulation/Arduino.h"
+//#  define USE_CPP_TASK
+//#  define USE_STD_CONCURRENCY
+//#  define IS_JUPYTER
+//#  define USE_STREAM_READ_OVERRIDE
+#endif

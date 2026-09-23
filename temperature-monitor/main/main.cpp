@@ -1,21 +1,56 @@
 #include <Arduino.h>
-#include "AudioTools.h"
-#include "BluetoothA2DPSink.h"
-
-I2SStream i2s;
-BluetoothA2DPSink a2dp_sink(i2s);
+#include <TFT_eSPI.h>
+#include <lvgl.h>
+#include "BluetoothSerial.h"
+#include "Properties.h"
+#include "Vars.h"
+#include "Elm327.h"
+#include "LvglUI.h"
+#include "LvglMain.h"
 
 void setup()
 {
-  auto cfg = i2s.defaultConfig();
-  cfg.pin_bck = 25;
-  cfg.pin_ws = 26;
-  cfg.pin_data = 27;
-  i2s.begin(cfg);
-  a2dp_sink.start("esp-car-util");
+  Serial.begin(115200);
+
+  lvgl_message_queue_handle = xQueueCreate(
+      10,
+      sizeof(LvglMessage));
+  if (lvgl_message_queue_handle == NULL)
+  {
+    Serial.println("Failed to create message queue");
+    return;
+  }
+
+  BaseType_t task_result_lvgl =
+      xTaskCreate(
+          lvgl_task,
+          "lvgl",
+          8192,
+          NULL,
+          5,
+          &lvgl_task_handle);
+  if (task_result_lvgl != pdPASS)
+  {
+    Serial.println("Failed to create LVGL task");
+    return;
+  }
+
+  BaseType_t task_result_elm327 =
+      xTaskCreate(
+          elm327_task,
+          "elm327",
+          8192,
+          NULL,
+          5,
+          &elm327_task_handle);
+  if (task_result_elm327 != pdPASS)
+  {
+    Serial.println("Failed to create ELM327 task");
+    return;
+  }
 }
 
 void loop()
 {
-  a2dp_sink.delay_ms(500); // or use vTaskDelay()
+  vTaskDelay(pdMS_TO_TICKS(10));
 }

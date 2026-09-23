@@ -2,8 +2,8 @@ idf_component_register(
   SRCS "main.cpp"
   INCLUDE_DIRS "../include"
   REQUIRES
-    arduino-audio-tools
-    ESP32-A2DP
+    etl
+    tft-espi
 )
 
 set_property(TARGET ${COMPONENT_LIB} PROPERTY CXX_STANDARD 23)

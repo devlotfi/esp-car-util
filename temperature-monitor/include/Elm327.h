@@ -11,23 +11,63 @@
 #error Bluetooth is not enabled! Use an ESP32 with Bluetooth Classic support.
 #endif
 
-BluetoothSerial SerialBT;
-
-static int readFailures = 0;
-static int recoveriesWithoutData = 0;
-
-// True only while Bluetooth is linked AND the ELM327 is initialized.
-// volatile so other tasks can read it safely (single bool, no lock needed).
-volatile bool elmConnected = false;
-
-void onTemperature(int tempC)
+// Wraps another Stream (e.g. BluetoothSerial) and holds outgoing bytes until a
+// CR ('\r') is written, then sends everything as ONE write (one SPP packet).
+//
+// Needed because ELMduino sends a command with print(cmd) followed by
+// print('\r'), which BluetoothSerial turns into two separate packets that some
+// ELM327 clones mishandle.
+class SingleWriteStream : public Stream
 {
-  Serial.printf("Coolant temp: %d C\n", tempC);
-  LvglMessage lvglMessage{};
-  lvglMessage.type = LvglMessageType::UpdateCoolantTemperature;
-  lvglMessage.data.updateCoolantTemperatureLvglMessage.temperature = tempC;
-  xQueueSend(lvgl_message_queue_handle, &lvglMessage, 0);
-}
+public:
+  explicit SingleWriteStream(Stream &inner) : _inner(inner) {}
+
+  using Print::write; // keep the other write() overloads visible
+
+  // ---- Input: passed straight through ----
+  int available() override { return _inner.available(); }
+  int read() override { return _inner.read(); }
+  int peek() override { return _inner.peek(); }
+
+  // ---- Output: buffered until CR, then sent in one go ----
+  size_t write(uint8_t b) override
+  {
+    if (_len >= sizeof(_buf))
+      flush(); // safety: never overflow
+    _buf[_len++] = b;
+    if (b == '\r')
+      flush();
+    return 1;
+  }
+
+  size_t write(const uint8_t *data, size_t size) override
+  {
+    for (size_t i = 0; i < size; i++)
+      write(data[i]);
+    return size;
+  }
+
+  void flush() override
+  {
+    if (_len > 0)
+    {
+      _inner.write(_buf, _len);
+      _inner.flush();
+      _len = 0;
+    }
+  }
+
+private:
+  Stream &_inner;
+  uint8_t _buf[128];
+  size_t _len = 0;
+};
+
+BluetoothSerial SerialBT;
+SingleWriteStream elmPort(SerialBT);
+ELM327 myELM327;
+volatile bool querying = false;
+volatile uint32_t lastReadMs = 0;
 
 void onConnected()
 {
@@ -45,303 +85,109 @@ void onDisconnected()
   xQueueSend(lvgl_message_queue_handle, &lvglMessage, 0);
 }
 
-// Updates the flag and fires the callback only on a real state change
-static void setConnected(bool state)
+void onTemperature(float coolantC)
 {
-  if (elmConnected == state)
-    return;
-  elmConnected = state;
-  if (state)
-    onConnected();
-  else
-    onDisconnected();
+  LvglMessage lvglMessage{};
+  lvglMessage.type = LvglMessageType::UpdateCoolantTemperature;
+  lvglMessage.data.updateCoolantTemperatureLvglMessage.temperature = (int)coolantC;
+  xQueueSend(lvgl_message_queue_handle, &lvglMessage, 0);
 }
 
-bool readElmResponse(String &response, uint32_t timeoutMs)
+bool connectAndInitElm()
 {
-  response = "";
-  uint32_t lastActivity = millis();
-
-  while (millis() - lastActivity < timeoutMs)
+  Serial.println("Connecting to ELM327 over Bluetooth...");
+  if (!SerialBT.connect(elm327Address))
   {
-    while (SerialBT.available())
-    {
-      char c = SerialBT.read();
-      lastActivity = millis();
-      if (c == '>')
-        return true;
-      response += c;
-    }
-    delay(1);
+    Serial.println("Bluetooth connection failed");
+    return false;
   }
-  return false;
-}
+  Serial.println("Bluetooth connected");
 
-// Makes a response readable in the log (CR -> space, trimmed)
-String cleanForLog(String s)
-{
-  s.replace('\r', ' ');
-  s.replace('\n', ' ');
-  s.trim();
-  return s;
-}
-
-// Sends a command terminated with CR only, as ONE Bluetooth write, and waits
-// for the reply. Returns true if the '>' prompt was received.
-bool sendCommand(const char *cmd, String &response, uint32_t timeoutMs)
-{
-  // Drop any stale data left over from a previous command
+  // Let the dongle settle and discard anything it sent on connect
+  delay(1000);
   while (SerialBT.available())
     SerialBT.read();
 
-#if DEBUG_RAW
-  Serial.printf(">> %s\n", cmd);
-#endif
-
-  // Command + CR in a single buffer (one SPP packet). Splitting them into two
-  // writes makes some ELM327 clones hang waiting for the line ending.
-  String out = String(cmd) + "\r";
-  SerialBT.write((const uint8_t *)out.c_str(), out.length());
-  SerialBT.flush();
-
-  bool gotPrompt = readElmResponse(response, timeoutMs);
-
-#if DEBUG_RAW
-  Serial.print("[raw] ");
-  for (size_t i = 0; i < response.length(); i++)
+  // begin() allocates the payload buffer each call and never frees a previous
+  // one, so free it ourselves before retrying (global object => starts as nullptr)
+  if (myELM327.payload)
   {
-    Serial.printf("%02X ", (uint8_t)response[i]);
+    free(myELM327.payload);
+    myELM327.payload = nullptr;
   }
-  Serial.println();
-  Serial.printf("<< %s\n", cleanForLog(response).c_str());
-  if (!gotPrompt)
-    Serial.println("(timeout: no '>' prompt received)");
-#endif
 
-  return gotPrompt;
-}
-
-// ---------------- Initialization ----------------
-
-struct InitStep
-{
-  const char *cmd;
-  const char *expect; // text that must appear in the reply
-};
-
-const InitStep INIT_STEPS[] = {
-    {"ATZ", "ELM"},  // reset, replies with the version string
-    {"ATE0", "OK"},  // echo off
-    {"ATL0", "OK"},  // linefeeds off
-    {"ATS0", "OK"},  // spaces off
-    {"ATH0", "OK"},  // headers off
-    {"ATSP0", "OK"}, // protocol: automatic
-};
-
-bool initElm()
-{
-  for (int attempt = 1; attempt <= INIT_ATTEMPTS; attempt++)
+  Serial.println("Initializing ELM327 (protocol search can take a while)...");
+  if (!myELM327.begin(elmPort, ELM_DEBUG, ELM_TIMEOUT_MS, elm327Protocol))
   {
-    Serial.printf("Initializing ELM327 (attempt %d/%d)...\n", attempt, INIT_ATTEMPTS);
-
-    bool ok = true;
-    for (const InitStep &step : INIT_STEPS)
-    {
-      String response;
-      bool gotPrompt = sendCommand(step.cmd, response, INIT_TIMEOUT_MS);
-
-      if (!gotPrompt || response.indexOf(step.expect) < 0)
-      {
-        Serial.printf("  %s failed (got: \"%s\")\n", step.cmd, cleanForLog(response).c_str());
-        ok = false;
-        break;
-      }
-      Serial.printf("  %s ok\n", step.cmd);
-    }
-
-    if (ok)
-    {
-      Serial.println("ELM327 initialized");
-      return true;
-    }
-    delay(1000);
+    Serial.println("ELM327 init failed (is the ignition on?)");
+    return false;
   }
-  return false;
-}
 
-// ---------------- Coolant temperature ----------------
-
-// Parses one cleaned line (no spaces, upper case) looking for "4105 XX".
-bool parseCoolantLine(const String &line, int &tempC)
-{
-  if (line.length() < 6 || !line.startsWith("4105"))
-    return false;
-  if (!isxdigit(line[4]) || !isxdigit(line[5]))
-    return false;
-
-  int a = (int)strtol(line.substring(4, 6).c_str(), nullptr, 16);
-  tempC = a - 40; // OBD-II PID 05: temp (C) = A - 40
+  Serial.println("ELM327 ready");
+  onConnected();
   return true;
-}
-
-// Scans the whole reply line by line, ignoring noise such as "SEARCHING...".
-// Works with spaces on or off (spaces are stripped before matching).
-bool parseCoolantTemp(const String &response, int &tempC)
-{
-  String line;
-  for (size_t i = 0; i <= response.length(); i++)
-  {
-    char c = (i < response.length()) ? response[i] : '\r'; // flush last line
-
-    if (c == '\r' || c == '\n')
-    {
-      if (parseCoolantLine(line, tempC))
-        return true;
-      line = "";
-    }
-    else if (c != ' ')
-    {
-      line += (char)toupper(c);
-    }
-  }
-  return false;
-}
-
-bool readCoolantTemp(int &tempC)
-{
-  String response;
-  if (!sendCommand("0105", response, PID_TIMEOUT_MS))
-  {
-    Serial.println("Read failed: timeout waiting for reply");
-    return false;
-  }
-  if (!parseCoolantTemp(response, tempC))
-  {
-    Serial.printf("Read failed: could not parse \"%s\"\n", cleanForLog(response).c_str());
-    return false;
-  }
-  return true;
-}
-
-// ---------------- Connection management ----------------
-
-void restartEsp(const char *reason)
-{
-  setConnected(false);
-  Serial.printf("FATAL: %s. Restarting ESP32 in 3 seconds...\n", reason);
-  Serial.flush();
-  delay(3000);
-  ESP.restart();
-}
-
-bool connectBluetooth()
-{
-  for (int attempt = 1; attempt <= BT_CONNECT_ATTEMPTS; attempt++)
-  {
-    Serial.printf("Connecting to ELM327 over Bluetooth (attempt %d/%d)...\n",
-                  attempt, BT_CONNECT_ATTEMPTS);
-
-    SerialBT.disconnect(); // clean up any half-open link (no-op if none)
-
-    if (SerialBT.connect(elm327Address))
-    {
-      Serial.println("Bluetooth connected");
-      // Let the dongle settle and discard anything it sent on connect
-      delay(1000);
-      while (SerialBT.available())
-        SerialBT.read();
-      return true;
-    }
-
-    Serial.println("Bluetooth connection failed");
-    delay(BT_RETRY_DELAY_MS);
-  }
-  return false;
-}
-
-// Bluetooth connect + ELM327 init, repeated as a whole a few times.
-// If nothing works, the ESP32 restarts. Returns only when connected and ready.
-void establishConnection()
-{
-  for (int cycle = 1; cycle <= MAX_CONNECT_CYCLES; cycle++)
-  {
-    Serial.printf("=== Connection cycle %d/%d ===\n", cycle, MAX_CONNECT_CYCLES);
-
-    if (connectBluetooth() && initElm())
-    {
-      readFailures = 0;
-      setConnected(true);
-      return;
-    }
-  }
-  restartEsp("Could not connect to / initialize the ELM327");
-}
-
-// Used when a working connection stops giving data. Repeated recoveries that
-// never produce a valid temperature lead to an ESP32 restart.
-void recover(const char *reason)
-{
-  Serial.printf("%s\n", reason);
-  setConnected(false);
-
-  recoveriesWithoutData++;
-  if (recoveriesWithoutData > MAX_RECOVERIES_WITHOUT_DATA)
-  {
-    restartEsp("Reconnecting did not restore valid temperature data");
-  }
-
-  Serial.printf("Recovery %d/%d...\n", recoveriesWithoutData, MAX_RECOVERIES_WITHOUT_DATA);
-  establishConnection();
 }
 
 static void elm327_task(void *arg)
 {
   SerialBT.setPin(elm327Pin, 4);
+
   if (!SerialBT.begin("ESP32_OBD", true))
   {
     Serial.println("Failed to initialize Bluetooth");
-    restartEsp("Bluetooth stack failed to start");
+    while (true)
+      delay(1000);
   }
-  establishConnection();
 
-  uint32_t lastReadMs = 0;
+  while (!connectAndInitElm())
+  {
+    Serial.println("Retrying...");
+    delay(RETRY_DELAY_MS);
+  }
+
+  lastReadMs = millis();
 
   while (true)
   {
-    // Bluetooth link dropped
     if (!SerialBT.connected())
     {
-      recover("Bluetooth link lost");
+      Serial.println("Bluetooth link lost, reconnecting...");
+      querying = false;
+      onDisconnected();
+      while (!connectAndInitElm())
+      {
+        Serial.println("Retrying...");
+        delay(RETRY_DELAY_MS);
+      }
       lastReadMs = millis();
       continue;
     }
 
-    if (millis() - lastReadMs < READ_INTERVAL_MS)
+    // Wait for the next read slot (unless a query is already in flight)
+    if (!querying && (millis() - lastReadMs < READ_INTERVAL_MS))
     {
       vTaskDelay(pdMS_TO_TICKS(10));
       continue;
     }
 
-    int tempC;
-    if (readCoolantTemp(tempC))
-    {
-      Serial.printf("Coolant temp: %d C\n", tempC);
-      readFailures = 0;
-      recoveriesWithoutData = 0;
-      onTemperature(tempC);
-    }
-    else
-    {
-      readFailures++;
-      Serial.printf("Read failure %d/%d\n", readFailures, MAX_READ_FAILURES);
+    // Non-blocking: the first call sends the query, later calls poll for the reply
+    querying = true;
+    float coolantC = myELM327.engineCoolantTemp();
 
-      if (readFailures >= MAX_READ_FAILURES)
-      {
-        recover("Too many consecutive read failures");
-      }
+    if (myELM327.nb_rx_state == ELM_SUCCESS)
+    {
+      Serial.printf("Coolant temp: %.1f C\n", coolantC);
+      onTemperature(coolantC);
+      querying = false;
+      lastReadMs = millis();
+    }
+    else if (myELM327.nb_rx_state != ELM_GETTING_MSG)
+    {
+      myELM327.printError(); // timeout, no data, etc.
+      querying = false;
+      lastReadMs = millis();
     }
 
-    lastReadMs = millis();
     vTaskDelay(pdMS_TO_TICKS(10));
   }
 }

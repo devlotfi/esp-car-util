@@ -4,6 +4,7 @@ idf_component_register(
   REQUIRES
     etl
     tft-espi
+    elmduino
 )
 
 set_property(TARGET ${COMPONENT_LIB} PROPERTY CXX_STANDARD 23)

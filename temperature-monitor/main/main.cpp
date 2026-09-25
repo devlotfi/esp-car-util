@@ -35,7 +35,7 @@ void setup()
     return;
   }
 
-  BaseType_t task_result_elm327 =
+  /* BaseType_t task_result_elm327 =
       xTaskCreate(
           elm327_task,
           "elm327",
@@ -47,7 +47,7 @@ void setup()
   {
     Serial.println("Failed to create ELM327 task");
     return;
-  }
+  } */
 }
 
 void loop()

@@ -46,8 +46,8 @@ void update_coolant_temp(int temp_c)
 
     lv_color_t color =
         hot
-            ? lv_color_hex(0xFF3B30)
-            : lv_color_hex(0x7AA2F7);
+            ? lv_color_hex(0xff0e00)
+            : lv_color_hex(0x0052FF);
 
     lv_obj_set_style_arc_color(
         temp_arc,
@@ -104,7 +104,7 @@ void create_coolant_gauge(lv_obj_t *parent)
     // Background arc
     lv_obj_set_style_arc_color(
         temp_arc,
-        lv_color_hex(0x414868),
+        lv_color_hex(0x161824),
         LV_PART_MAIN);
 
     lv_obj_set_style_arc_width(
@@ -115,7 +115,7 @@ void create_coolant_gauge(lv_obj_t *parent)
     // Indicator arc
     lv_obj_set_style_arc_color(
         temp_arc,
-        lv_color_hex(0x7AA2F7),
+        lv_color_hex(0x0052FF),
         LV_PART_INDICATOR);
 
     lv_obj_set_style_arc_width(
@@ -135,7 +135,7 @@ void create_coolant_gauge(lv_obj_t *parent)
 
     lv_obj_set_style_text_color(
         temp_label,
-        lv_color_hex(0x7AA2F7),
+        lv_color_hex(0x0052FF),
         0);
 
     lv_label_set_text(
@@ -188,7 +188,7 @@ void create_disconnected_screen(lv_obj_t *parent)
 
     lv_obj_set_style_text_color(
         label,
-        lv_color_hex(0xFF3B30),
+        lv_color_hex(0xff0e00),
         0);
 
     lv_label_set_text(

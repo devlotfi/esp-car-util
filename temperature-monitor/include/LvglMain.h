@@ -133,6 +133,23 @@ static void lvgl_task(void *arg)
       }
     }
 
+    static uint32_t last_update = 0;
+    if (millis() - last_update > 2000)
+    {
+      last_update = millis();
+      if (current_screen == ScreenType::SCREEN_COOLANT_GAUGE)
+      {
+        show_disconnected_screen();
+        current_screen = ScreenType::SCREEN_DISCONNECTED;
+      }
+      else
+      {
+        show_coolant_gauge();
+        update_coolant_temp(random(40, 120));
+        current_screen = ScreenType::SCREEN_COOLANT_GAUGE;
+      }
+    }
+
     lv_tick_inc(5);
     lv_timer_handler();
     vTaskDelay(pdMS_TO_TICKS(5));

@@ -65,7 +65,7 @@ private:
 
 BluetoothSerial SerialBT;
 SingleWriteStream elmPort(SerialBT);
-ELM327 myELM327;
+ELM327 elm327;
 volatile bool querying = false;
 volatile uint32_t lastReadMs = 0;
 
@@ -110,14 +110,14 @@ bool connectAndInitElm()
 
   // begin() allocates the payload buffer each call and never frees a previous
   // one, so free it ourselves before retrying (global object => starts as nullptr)
-  if (myELM327.payload)
+  if (elm327.payload)
   {
-    free(myELM327.payload);
-    myELM327.payload = nullptr;
+    free(elm327.payload);
+    elm327.payload = nullptr;
   }
 
   Serial.println("Initializing ELM327 (protocol search can take a while)...");
-  if (!myELM327.begin(elmPort, ELM_DEBUG, ELM_TIMEOUT_MS, elm327Protocol))
+  if (!elm327.begin(elmPort, ELM_DEBUG, ELM_TIMEOUT_MS, elm327Protocol))
   {
     Serial.println("ELM327 init failed (is the ignition on?)");
     return false;
@@ -172,18 +172,18 @@ static void elm327_task(void *arg)
 
     // Non-blocking: the first call sends the query, later calls poll for the reply
     querying = true;
-    float coolantC = myELM327.engineCoolantTemp();
+    float coolantC = elm327.engineCoolantTemp();
 
-    if (myELM327.nb_rx_state == ELM_SUCCESS)
+    if (elm327.nb_rx_state == ELM_SUCCESS)
     {
       Serial.printf("Coolant temp: %.1f C\n", coolantC);
       onTemperature(coolantC);
       querying = false;
       lastReadMs = millis();
     }
-    else if (myELM327.nb_rx_state != ELM_GETTING_MSG)
+    else if (elm327.nb_rx_state != ELM_GETTING_MSG)
     {
-      myELM327.printError(); // timeout, no data, etc.
+      elm327.printError(); // timeout, no data, etc.
       querying = false;
       lastReadMs = millis();
     }

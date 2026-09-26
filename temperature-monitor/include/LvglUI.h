@@ -197,8 +197,6 @@ void create_coolant_gauge(lv_obj_t *parent)
         LV_ALIGN_OUT_BOTTOM_MID,
         0,
         10);
-
-    update_coolant_temp(95);
 }
 
 void create_dashboard_stats(lv_obj_t *parent)

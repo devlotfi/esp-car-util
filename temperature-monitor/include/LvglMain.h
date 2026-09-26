@@ -128,8 +128,10 @@ static void lvgl_task(void *arg)
       }
       else if (lvglMessage.type == LvglMessageType::UpdateStats)
       {
+        Serial.println("Recived data messsage");
         if (current_screen == ScreenType::SCREEN_COOLANT_GAUGE)
         {
+          Serial.printf("Recived data lvgl: %f %f %f\n", (float)lvglMessage.data.updateStatsLvglMessage.temperature_c, (float)lvglMessage.data.updateStatsLvglMessage.speed_kmh, (float)lvglMessage.data.updateStatsLvglMessage.load_percent);
           update_coolant_temp(lvglMessage.data.updateStatsLvglMessage.temperature_c);
           update_speed(lvglMessage.data.updateStatsLvglMessage.speed_kmh);
           update_load(lvglMessage.data.updateStatsLvglMessage.load_percent);

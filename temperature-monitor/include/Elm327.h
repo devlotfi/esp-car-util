@@ -63,11 +63,22 @@ private:
   size_t _len = 0;
 };
 
+enum obd_pid_states
+{
+  PID_COOLANT,
+  PID_SPEED,
+  PID_LOAD
+};
+
 BluetoothSerial SerialBT;
 SingleWriteStream elmPort(SerialBT);
 ELM327 elm327;
 volatile bool querying = false;
 volatile uint32_t lastReadMs = 0;
+float pendingCoolant = 0;
+int pendingSpeed = 0;
+float pendingLoad = 0;
+volatile obd_pid_states obd_state = obd_pid_states::PID_COOLANT;
 
 void onConnected()
 {
@@ -85,11 +96,13 @@ void onDisconnected()
   xQueueSend(lvgl_message_queue_handle, &lvglMessage, 0);
 }
 
-void onTemperature(float coolantC)
+void onData(float coolantC, int speedKmh, float loadPercent)
 {
   LvglMessage lvglMessage{};
-  lvglMessage.type = LvglMessageType::UpdateCoolantTemperature;
-  lvglMessage.data.updateCoolantTemperatureLvglMessage.temperature = (int)coolantC;
+  lvglMessage.type = LvglMessageType::UpdateStats;
+  lvglMessage.data.updateStatsLvglMessage.temperature_c = (int)coolantC;
+  lvglMessage.data.updateStatsLvglMessage.speed_kmh = (int)speedKmh;
+  lvglMessage.data.updateStatsLvglMessage.load_percent = (int)loadPercent;
   xQueueSend(lvgl_message_queue_handle, &lvglMessage, 0);
 }
 
@@ -153,6 +166,7 @@ static void elm327_task(void *arg)
     {
       Serial.println("Bluetooth link lost, reconnecting...");
       querying = false;
+      obd_state = obd_pid_states::PID_COOLANT;
       onDisconnected();
       while (!connectAndInitElm())
       {
@@ -164,28 +178,68 @@ static void elm327_task(void *arg)
     }
 
     // Wait for the next read slot (unless a query is already in flight)
-    if (!querying && (millis() - lastReadMs < READ_INTERVAL_MS))
+    if (!querying && obd_state == obd_pid_states::PID_COOLANT && (millis() - lastReadMs < READ_INTERVAL_MS))
     {
       vTaskDelay(pdMS_TO_TICKS(10));
       continue;
     }
 
-    // Non-blocking: the first call sends the query, later calls poll for the reply
     querying = true;
-    float coolantC = elm327.engineCoolantTemp();
 
-    if (elm327.nb_rx_state == ELM_SUCCESS)
+    switch (obd_state)
     {
-      Serial.printf("Coolant temp: %.1f C\n", coolantC);
-      onTemperature(coolantC);
-      querying = false;
-      lastReadMs = millis();
+    case obd_pid_states::PID_COOLANT:
+    {
+      pendingCoolant = elm327.engineCoolantTemp();
+
+      if (elm327.nb_rx_state == ELM_SUCCESS)
+      {
+        obd_state = obd_pid_states::PID_SPEED;
+        querying = false;
+      }
+      else if (elm327.nb_rx_state != ELM_GETTING_MSG)
+      {
+        elm327.printError();
+        obd_state = obd_pid_states::PID_SPEED;
+        querying = false;
+      }
+      break;
     }
-    else if (elm327.nb_rx_state != ELM_GETTING_MSG)
+
+    case obd_pid_states::PID_SPEED:
     {
-      elm327.printError(); // timeout, no data, etc.
-      querying = false;
-      lastReadMs = millis();
+      pendingSpeed = elm327.kph();
+
+      if (elm327.nb_rx_state == ELM_SUCCESS)
+      {
+        obd_state = obd_pid_states::PID_LOAD;
+        querying = false;
+      }
+      else if (elm327.nb_rx_state != ELM_GETTING_MSG)
+      {
+        elm327.printError();
+        obd_state = obd_pid_states::PID_LOAD;
+        querying = false;
+      }
+      break;
+    }
+
+    case obd_pid_states::PID_LOAD:
+    {
+      pendingLoad = elm327.engineLoad();
+
+      if (elm327.nb_rx_state == ELM_SUCCESS || elm327.nb_rx_state != ELM_GETTING_MSG)
+      {
+        if (elm327.nb_rx_state != ELM_SUCCESS)
+          elm327.printError();
+
+        onData(pendingCoolant, pendingSpeed, pendingLoad); // full round done
+        obd_state = obd_pid_states::PID_COOLANT;
+        querying = false;
+        lastReadMs = millis();
+      }
+      break;
+    }
     }
 
     vTaskDelay(pdMS_TO_TICKS(10));

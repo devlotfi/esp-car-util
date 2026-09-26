@@ -13,12 +13,14 @@ static uint8_t *draw_buf;
 enum class LvglMessageType : uint8_t
 {
   ShowScreen,
-  UpdateCoolantTemperature
+  UpdateStats
 };
 
-struct UpdateCoolantTemperatureLvglMessage
+struct UpdateStatsLvglMessage
 {
-  int temperature;
+  int temperature_c;
+  int speed_kmh;
+  int load_percent;
 };
 
 struct ShowScreenLvglMessage
@@ -32,7 +34,7 @@ struct LvglMessage
   union
   {
     ShowScreenLvglMessage showScreenLvglMessage;
-    UpdateCoolantTemperatureLvglMessage updateCoolantTemperatureLvglMessage;
+    UpdateStatsLvglMessage updateStatsLvglMessage;
   } data;
 };
 
@@ -124,29 +126,14 @@ static void lvgl_task(void *arg)
           show_disconnected_screen();
         }
       }
-      else if (lvglMessage.type == LvglMessageType::UpdateCoolantTemperature)
+      else if (lvglMessage.type == LvglMessageType::UpdateStats)
       {
         if (current_screen == ScreenType::SCREEN_COOLANT_GAUGE)
         {
-          update_coolant_temp(lvglMessage.data.updateCoolantTemperatureLvglMessage.temperature);
+          update_coolant_temp(lvglMessage.data.updateStatsLvglMessage.temperature_c);
+          update_speed(lvglMessage.data.updateStatsLvglMessage.speed_kmh);
+          update_load(lvglMessage.data.updateStatsLvglMessage.load_percent);
         }
-      }
-    }
-
-    static uint32_t last_update = 0;
-    if (millis() - last_update > 2000)
-    {
-      last_update = millis();
-      if (current_screen == ScreenType::SCREEN_COOLANT_GAUGE)
-      {
-        show_disconnected_screen();
-        current_screen = ScreenType::SCREEN_DISCONNECTED;
-      }
-      else
-      {
-        show_coolant_gauge();
-        update_coolant_temp(random(40, 120));
-        current_screen = ScreenType::SCREEN_COOLANT_GAUGE;
       }
     }
 

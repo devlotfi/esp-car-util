@@ -13,7 +13,7 @@ void setup()
   cfg.pin_ws = I2S_LRCK_PIN;
   cfg.pin_data = I2S_DIN_PIN;
   i2s.begin(cfg);
-  a2dp_sink.start("esp-car-util");
+  a2dp_sink.start(BT_NAME);
 }
 
 void loop()

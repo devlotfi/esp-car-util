@@ -19,9 +19,7 @@
       "inheritDefault": "hidden"
     }
   },
-  "idf.openOcdConfigs": [
-    "board/esp32-wrover-kit-3.3v.cfg"
-  ],
+  "idf.openOcdConfigs": ["board/esp32-wrover-kit-3.3v.cfg"],
   "idf.currentSetup": "C:\\esp\\v5.5.5\\esp-idf",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32"
@@ -33,5 +31,5 @@
     "--compile-commands-dir=c:\\Users\\lotfi\\Projects\\esp-car-util\\temperature-monitor\\build"
   ],
   "idf.flashType": "UART",
-  "idf.port": "COM6"
+  "idf.port": "COM3"
 }

@@ -98,6 +98,7 @@ void onDisconnected()
 
 void onData(float coolantC, int speedKmh, float loadPercent)
 {
+  Serial.printf("Recived data elm327: %f %f %f\n", (float)coolantC, (float)speedKmh, (float)loadPercent);
   LvglMessage lvglMessage{};
   lvglMessage.type = LvglMessageType::UpdateStats;
   lvglMessage.data.updateStatsLvglMessage.temperature_c = (int)coolantC;

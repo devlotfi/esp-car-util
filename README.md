@@ -31,10 +31,10 @@ A smart car utility
 
 ## Components
 
-- ESP32S3 (N16R8)
-- 3x Push Buttons
-- Rotary Encoder Module (EC11)
+- 2x ESP32 Classic 38 pin
 - 2.8 in tft lcd (ILI9341)
+- PCM5102A
+- KY-012 Buzzer
 - Cables
 - Case (Optional)
 

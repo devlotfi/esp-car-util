@@ -5,6 +5,7 @@
 #define TEMP_MIN 40
 #define TEMP_MAX 120
 #define TEMP_HOT_THRESHOLD 100
+#define BUZZER_PIN 13
 
 uint8_t elm327Address[6] = {0x00, 0x10, 0xCC, 0x4F, 0x36, 0x03};
 const char *elm327Pin = "1234";

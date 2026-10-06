@@ -105,6 +105,10 @@ void onData(float coolantC, int speedKmh, float loadPercent)
   lvglMessage.data.updateStatsLvglMessage.speed_kmh = (int)speedKmh;
   lvglMessage.data.updateStatsLvglMessage.load_percent = (int)loadPercent;
   xQueueSend(lvgl_message_queue_handle, &lvglMessage, 0);
+  if (coolantC >= TEMP_HOT_THRESHOLD)
+  {
+    xTaskNotifyGive(buzzer_task_handle);
+  }
 }
 
 bool connectAndInitElm()

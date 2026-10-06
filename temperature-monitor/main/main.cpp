@@ -5,6 +5,7 @@
 #include "Properties.h"
 #include "Vars.h"
 #include "Elm327.h"
+#include "Buzzer.h"
 #include "LvglUI.h"
 #include "LvglMain.h"
 
@@ -46,6 +47,20 @@ void setup()
   if (task_result_elm327 != pdPASS)
   {
     Serial.println("Failed to create ELM327 task");
+    return;
+  }
+
+  BaseType_t task_result_buzzer =
+      xTaskCreate(
+          buzzer_task,
+          "buzzer",
+          8192,
+          NULL,
+          5,
+          &buzzer_task_handle);
+  if (task_result_buzzer != pdPASS)
+  {
+    Serial.println("Failed to create Buzzer task");
     return;
   }
 }

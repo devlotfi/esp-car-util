@@ -31,5 +31,5 @@
     "--compile-commands-dir=c:\\Users\\lotfi\\Projects\\esp-car-util\\temperature-monitor\\build"
   ],
   "idf.flashType": "UART",
-  "idf.port": "COM3"
+  "idf.port": "COM6"
 }

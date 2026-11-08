@@ -13,7 +13,10 @@ void setup()
   cfg.pin_ws = I2S_LRCK_PIN;
   cfg.pin_data = I2S_DIN_PIN;
   i2s.begin(cfg);
+
+  a2dp_sink.set_auto_reconnect(true, 1000);
   a2dp_sink.start(BT_NAME);
+  a2dp_sink.reconnect();
 }
 
 void loop()

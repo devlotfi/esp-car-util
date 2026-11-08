@@ -3,6 +3,8 @@ idf_component_register(
   INCLUDE_DIRS "../include"
   REQUIRES
     etl
+    codec-sbc
+    codec-helix
     arduino-audio-tools
     ESP32-A2DP
 )

@@ -20,7 +20,7 @@
     }
   },
   "idf.openOcdConfigs": ["board/esp32-wrover-kit-3.3v.cfg"],
-  "idf.currentSetup": "C:\\esp\\v5.5.6\\esp-idf",
+  "idf.currentSetup": "C:\\esp\\v6.1\\esp-idf",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32"
   },

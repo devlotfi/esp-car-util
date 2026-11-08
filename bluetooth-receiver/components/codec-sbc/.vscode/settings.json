@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "unistd.h": "c"
+    },
+    "terminal.integrated.stickyScroll.enabled": false
+}
